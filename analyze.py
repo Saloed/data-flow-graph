@@ -45,6 +45,7 @@ class ExpressionVisitor(ast.NodeVisitor):
         self.assign_value(node.target, value)
         target = self.visit(node.target)
         graph_node.depends_on.append(target)
+        target.depends_on.append(target)
         return graph_node
 
     def visit_BinOp(self, node):
@@ -130,7 +131,9 @@ class ExpressionVisitor(ast.NodeVisitor):
     def visit_For(self, node):
         graph_node = self.mk_node(node)
         iterable = self.visit(node.iter)
+        target = self.visit(node.target)
         graph_node.depends_on.append(iterable)
+        target.depends_on.append(graph_node)
         self.generic_visit(node)
         return graph_node
 
@@ -191,20 +194,31 @@ class FunctionLevelAnalyzer(ast.NodeVisitor):
 
     def merge_nodes(self, nodes):
         merged_nodes = {}
+        all_nodes = [it for group in nodes.values() for it in group]
         for ast_node, graph_nodes in nodes.items():
             if not graph_nodes:
                 merged_nodes[ast_node] = []
             elif len(graph_nodes) == 1:
                 merged_nodes[ast_node] = graph_nodes[0]
             else:
-                first = graph_nodes[0]
-                if all(it.ast_node == first.ast_node and type(it) == type(first) for it in graph_nodes):
-                    if first.depends_on is not None:
-                        for elem in graph_nodes[1:]:
-                            first.depends_on += elem.depends_on
-                    merged_nodes[ast_node] = first
-                else:
+                first, other = graph_nodes[0], graph_nodes[1:]
+                if any(it.ast_node != first.ast_node for it in other):
                     raise NotImplementedError('Merge is not implemented')
+                if any(type(it) != type(first) for it in other):
+                    raise NotImplementedError('Merge is not implemented')
+                to_be_replaced = set(other)
+                for candidate in all_nodes:
+                    if candidate.depends_on is None:
+                        continue
+                    candidate.depends_on = [
+                        it if it not in to_be_replaced else first
+                        for it in candidate.depends_on
+                    ]
+                if first.depends_on is not None:
+                    all_deps = [it for node in graph_nodes for it in node.depends_on]
+                    first.depends_on = all_deps
+
+                merged_nodes[ast_node] = first
 
         result = {
             ast_node: self.simplify_dependencies(graph_node)
@@ -228,6 +242,8 @@ class FunctionLevelAnalyzer(ast.NodeVisitor):
         for ref in references:
             self.resolve_reference(ref, node, nodes)
         result_nodes = list(nodes.values())
+        for i, node in enumerate(result_nodes):
+            node.index = i
         visualize_graph(result_nodes)
 
     def resolve_reference(self, reference, scope, nodes):

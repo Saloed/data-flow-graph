@@ -151,6 +151,14 @@ class ExpressionVisitor(ast.NodeVisitor):
         super(ExpressionVisitor, self).generic_visit(node)
 
 
+def iter_fields_ordered(node, *order):
+    for field in order:
+        try:
+            yield field, getattr(node, field)
+        except AttributeError:
+            pass
+
+
 class ReferenceResolver(ast.NodeVisitor):
     def __init__(self, target_node):
         self.target_node = target_node
@@ -174,6 +182,20 @@ class ReferenceResolver(ast.NodeVisitor):
         if not self.continue_resolution:
             return
         super(ReferenceResolver, self).visit(node)
+
+    def generic_visit(self, node):
+        fields = ast.iter_fields(node)
+        if isinstance(node, ast.Assign):
+            fields = iter_fields_ordered(node, 'value', 'targets')
+        elif isinstance(node, ast.AugAssign):
+            fields = iter_fields_ordered(node, 'value', 'target')
+        for field, value in fields:
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, ast.AST):
+                        self.visit(item)
+            elif isinstance(value, ast.AST):
+                self.visit(value)
 
 
 def visualize_graph(nodes):

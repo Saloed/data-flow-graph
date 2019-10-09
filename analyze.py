@@ -6,7 +6,7 @@ import os
 import networkx as nx
 import nxpd
 
-from Node import Node, ReferenceNode, ConstantNode, CallNode, ArgumentNode
+from Node import Node, ReferenceNode, ConstantNode, CallNode, ArgumentNode, TerminalNode
 
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 EXAMPLE_DIR = os.path.join(BASE_PATH, 'examples')
@@ -256,6 +256,45 @@ class FunctionLevelAnalyzer(ast.NodeVisitor):
         node.depends_on = list(set(current_deps))
         return node
 
+    def show_this_node(self, node):
+        if isinstance(node, TerminalNode):
+            return True
+        if isinstance(node.ast_node, (ast.Name, ast.Return)):
+            return True
+        if isinstance(node, CallNode):
+            return True
+        return False
+
+    def find_named_children(self, root):
+        children = set()
+        visited = set()
+
+        def visit(node):
+            if node is None:
+                return
+            if isinstance(node, list):
+                for item in node:
+                    visit(item)
+                return
+            if node in visited:
+                return
+            visited.add(node)
+            if self.show_this_node(node):
+                children.add(node)
+                return
+            visit(node.depends_on)
+
+        if root.depends_on is None:
+            return None
+        visit(root.depends_on)
+        return list(children)
+
+    def collapse_nodes(self, nodes):
+        for node in nodes:
+            node.depends_on = self.find_named_children(node)
+        result = [node for node in nodes if self.show_this_node(node)]
+        return result
+
     def visit_FunctionDef(self, node):
         analyzer = ExpressionVisitor()
         analyzer.visit(node)
@@ -266,6 +305,7 @@ class FunctionLevelAnalyzer(ast.NodeVisitor):
         result_nodes = list(nodes.values())
         for i, node in enumerate(result_nodes):
             node.index = i
+        result_nodes = self.collapse_nodes(result_nodes)
         visualize_graph(result_nodes)
 
     def resolve_reference(self, reference, scope, nodes):

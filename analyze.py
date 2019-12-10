@@ -3,8 +3,7 @@ import collections
 import itertools
 import os
 
-import networkx as nx
-import nxpd
+from graphviz import Digraph
 
 from Node import Node, ReferenceNode, ConstantNode, CallNode, ArgumentNode, TerminalNode
 
@@ -198,18 +197,17 @@ class ReferenceResolver(ast.NodeVisitor):
                 self.visit(value)
 
 
-def visualize_graph(nodes):
-    G = nx.DiGraph()
+def visualize_graph(nodes, name):
+    graph = Digraph(name)
     for node in nodes:
-        G.add_node(node)
+        graph.node(node.id(), str(node))
         if isinstance(node, ReferenceNode) and node.referenced_node is not None:
-            G.add_edge(node, node.referenced_node)
+            graph.edge(node.id(), node.referenced_node.id())
         if node.depends_on is None:
             continue
         for dependency in node.depends_on:
-            G.add_edge(node, dependency)
-    # nxpd.nxpdParams['show'] = 'ipynb'
-    nxpd.draw(G, show=True)
+            graph.edge(node.id(), dependency.id())
+    graph.render(format='png', view=True, cleanup=True)
 
 
 class FunctionLevelAnalyzer(ast.NodeVisitor):
@@ -320,12 +318,12 @@ class FunctionLevelAnalyzer(ast.NodeVisitor):
 
 
 def main():
-    files = [os.path.join(EXAMPLE_DIR, f) for f in os.listdir(EXAMPLE_DIR)]
-    sources = [open(f).read() for f in files]
+    files = [f for f in os.listdir(EXAMPLE_DIR)]
+    paths = [os.path.join(EXAMPLE_DIR, f) for f in files]
+    sources = [open(f).read() for f in paths]
     asts = [ast.parse(f) for f in sources]
-    analyzer = FunctionLevelAnalyzer()
-    for _ast in asts:
-        analyzer.visit(_ast)
+    for file_name, _ast in zip(files, asts):
+        FunctionLevelAnalyzer(file_name).visit(_ast)
 
 
 if __name__ == '__main__':

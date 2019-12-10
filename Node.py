@@ -7,6 +7,9 @@ class Node:
         self.depends_on = []
         self.index = None
 
+    def id(self):
+        return str(self.index)
+
     def __eq__(self, other):
         return self.ast_node == other.ast_node
 
@@ -19,9 +22,9 @@ class Node:
     def __str__(self):
         node = self.ast_node
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
-            return f'{self.index} Store: {node.id}'
+            return f'Store: {node.id}'
         else:
-            return f'{self.index} {node.__class__.__name__}'
+            return f'{node.__class__.__name__}'
 
 
 class CallNode(Node):
@@ -30,7 +33,7 @@ class CallNode(Node):
         self.function = function
 
     def __str__(self):
-        return f'{self.index} Call: {self.function.ast_node.id}'
+        return f'Call: {self.function.ast_node.id}'
 
 
 class TerminalNode(Node):
@@ -44,7 +47,7 @@ class ArgumentNode(TerminalNode):
         super(ArgumentNode, self).__init__(ast_node)
 
     def __str__(self):
-        return f'{self.index} Arg: {self.ast_node.arg}'
+        return f'Arg: {self.ast_node.arg}'
 
 
 class ReferenceNode(TerminalNode):
@@ -53,7 +56,7 @@ class ReferenceNode(TerminalNode):
         self.referenced_node = None
 
     def __str__(self):
-        return f'{self.index} Load: {self.ast_node.id}'
+        return f'Load: {self.ast_node.id}'
 
 
 class ConstantNode(TerminalNode):
@@ -62,4 +65,4 @@ class ConstantNode(TerminalNode):
         self.value = value
 
     def __str__(self):
-        return f'{self.index} Const: {self.value}'
+        return f'Const: {self.value}'

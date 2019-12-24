@@ -212,6 +212,9 @@ def visualize_graph(nodes, name):
 
 class FunctionLevelAnalyzer(ast.NodeVisitor):
 
+    def __init__(self, file_name):
+        self.file_name = file_name
+
     def merge_nodes(self, nodes):
         merged_nodes = {}
         all_nodes = [it for group in nodes.values() for it in group]
@@ -247,51 +250,45 @@ class FunctionLevelAnalyzer(ast.NodeVisitor):
 
         return result
 
-    def simplify_dependencies(self, node):
+    @staticmethod
+    def simplify_dependencies(node):
         if node.depends_on is None:
             return node
         current_deps = node.depends_on
         node.depends_on = list(set(current_deps))
         return node
 
-    def show_this_node(self, node):
-        if isinstance(node, TerminalNode):
+    @staticmethod
+    def is_interesting_node(node):
+        if node.ast_node and isinstance(node.ast_node, ast.Name) and isinstance(node.ast_node.ctx, ast.Store):
             return True
-        if isinstance(node.ast_node, (ast.Name, ast.Return)):
+        if isinstance(node, (CallNode, ConstantNode, ArgumentNode)):
             return True
-        if isinstance(node, CallNode):
+        if isinstance(node.ast_node, ast.Return):
             return True
         return False
 
-    def find_named_children(self, root):
-        children = set()
-        visited = set()
+    def _new_collapse_nodes(self, root):
 
         def visit(node):
             if node is None:
-                return
+                return []
             if isinstance(node, list):
-                for item in node:
-                    visit(item)
-                return
-            if node in visited:
-                return
-            visited.add(node)
-            if self.show_this_node(node):
-                children.add(node)
-                return
-            visit(node.depends_on)
+                return [it for element in node for it in visit(element)]
+            if self.is_interesting_node(node):
+                return [node]
+            result = visit(node.depends_on)
+            if isinstance(node, ReferenceNode):
+                result += visit(node.referenced_node)
+            return result
 
-        if root.depends_on is None:
-            return None
-        visit(root.depends_on)
-        return list(children)
+        depends = visit(root.depends_on)
+        root.depends_on = depends
+        return root
 
-    def collapse_nodes(self, nodes):
-        for node in nodes:
-            node.depends_on = self.find_named_children(node)
-        result = [node for node in nodes if self.show_this_node(node)]
-        return result
+    def new_collapse_nodes(self, nodes):
+        collapsed = [self._new_collapse_nodes(node) for node in nodes if self.is_interesting_node(node)]
+        return collapsed
 
     def visit_FunctionDef(self, node):
         analyzer = ExpressionVisitor()
@@ -303,8 +300,8 @@ class FunctionLevelAnalyzer(ast.NodeVisitor):
         result_nodes = list(nodes.values())
         for i, node in enumerate(result_nodes):
             node.index = i
-        result_nodes = self.collapse_nodes(result_nodes)
-        visualize_graph(result_nodes)
+        result_nodes = self.new_collapse_nodes(result_nodes)
+        visualize_graph(result_nodes, self.file_name)
 
     def resolve_reference(self, reference, scope, nodes):
         if not isinstance(reference.ast_node, ast.Name):
